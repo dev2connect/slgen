@@ -1,0 +1,23 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# Logs
+logs
+*.log
+server.log
+ingest.log
+
+# Environment
+.env
+
+# Mac
+.DS_Store
+
+# Others
+public/*.map
+coverage/
+.vscode/
