@@ -55,11 +55,53 @@ app.post('/api/search', async (req, res) => {
 
     console.log(`Searching for: "${query}" in category: ${category || 'all'}`);
 
-    // Generate embedding for the search query
-    const queryEmbedding = await generateEmbedding(query);
-
-    // Search in Pinecone
     const index = pinecone.index(INDEX_NAME);
+    
+    // Check if query looks like a company number (digits only or alphanumeric like NI682359)
+    const isCompanyNumber = /^[A-Z0-9]+$/i.test(query.trim());
+    
+    // If it looks like a company number, try exact metadata match first
+    if (isCompanyNumber) {
+      const exactFilter = {
+        companyNumber: { $eq: query.trim().toUpperCase() }
+      };
+      
+      // Add category filter if specified
+      if (category && category !== 'all') {
+        exactFilter.category = { $eq: category };
+      }
+      
+      const exactResults = await index.query({
+        vector: new Array(1536).fill(0), // dummy vector for metadata-only search
+        topK: 1,
+        includeMetadata: true,
+        filter: exactFilter
+      });
+      
+      // If we found an exact match, prioritize it
+      if (exactResults.matches.length > 0 && exactResults.matches[0].metadata?.companyNumber) {
+        const exactMatch = exactResults.matches[0];
+        const metadata = exactMatch.metadata || {};
+        
+        return res.json({
+          success: true,
+          count: 1,
+          exactMatch: true,
+          results: [{
+            companyName: metadata.companyName || 'N/A',
+            companyNumber: metadata.companyNumber || 'N/A',
+            companyStatus: metadata.companyStatus || 'unknown',
+            category: metadata.category || 'unknown',
+            officerCount: metadata.officerCount || 0,
+            officers: metadata.officers || 'N/A',
+            score: 1.0 // Perfect match
+          }]
+        });
+      }
+    }
+
+    // Fall back to semantic search
+    const queryEmbedding = await generateEmbedding(query);
     
     // Build filter if category is specified
     const filter = category && category !== 'all' ? { category: { $eq: category } } : undefined;
@@ -88,6 +130,7 @@ app.post('/api/search', async (req, res) => {
     res.json({
       success: true,
       count: results.length,
+      exactMatch: false,
       results: results
     });
 
